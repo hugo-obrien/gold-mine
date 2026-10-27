@@ -3,3 +3,5 @@
 *.jpeg filter=lfs diff=lfs merge=lfs -text
 
 assets/resources/** filter=lfs diff=lfs merge=lfs -text
+
+*.meta text eol=lf
