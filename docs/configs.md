@@ -11,20 +11,58 @@
 ```json
 {
   "defaultPriceMultiplier": 1.15,
-  "mockMinerPrice": 10
+  "maxOfflineSeconds": 28800
 }
 ```
 
 | Ключ | Тип | Смысл | Где используется |
 | --- | --- | --- | --- |
 | `defaultPriceMultiplier` | number | множитель цены следующего рабочего | `GameManager.getNextWorkerPrice()` |
-| `mockMinerPrice` | number | базовая цена шахтёра | `GameManager.getNextWorkerPrice()` |
+| `maxOfflineSeconds` | number | лимит оффлайн-дохода (сек) | `GameManager.processPostLoad()` |
 
 Обработка:
 
 - `ConfigLoader.loadGlobalConfig()` → `cc.resources.load("configs/global-config", cc.JsonAsset, …)`.
-- `ConfigData` читает значения по именам из `ConfigKey` (`ConfigKeys.ts`): `PRICE_MULTIPLIER = "defaultPriceMultiplier"`, `MOCK_MINER_PRICE = "mockMinerPrice"`.
-- Тип проверяется через `ConfigParser` (реализован только `NUMBER`). Отсутствующий ключ → `cc.error` + исключение.
+- `ConfigData` читает значения по именам из `ConfigKey` (`ConfigKeys.ts`).
+- Тип проверяется через `ConfigParser` (`NUMBER`, `STRING`, `BOOLEAN`, `STRING_ARRAY`). Отсутствующий ключ → `cc.error` + исключение.
+
+### workers.json — реестр рабочих
+
+```json
+{
+  "workers": [
+    {
+      "id": "miner",
+      "nameKey": "worker.miner",
+      "icon": "miner",
+      "goldPerSecond": 0.25,
+      "basePrice": 10
+    },
+    {
+      "id": "dwarf",
+      "nameKey": "worker.dwarf",
+      "icon": "dwarf",
+      "goldPerSecond": 1,
+      "basePrice": 25
+    }
+  ]
+}
+```
+
+| Поле | Тип | Обязательно | Смысл |
+| --- | --- | --- | --- |
+| `id` | string | да | идентификатор рабочего (соответствует `MineWorkerTypes`) |
+| `goldPerSecond` | number | да | пассивный доход |
+| `basePrice` | number | да | базисная цена при покупке |
+| `icon` | string | нет | ключ иконки |
+| `nameKey` | string | нет | ключ локализации имени |
+
+Обработка:
+
+- `WorkerConfigLoader.load()` → `cc.resources.load('configs/workers', cc.JsonAsset, …)`.
+- Записи без `id` или без `goldPerSecond`/`basePrice` пропускаются с `cc.warn`.
+- `Miner.goldPerSecond`/`defaultPrice` и `Dwarf.goldPerSecond`/`defaultPrice` берутся из реестра по своему `id`.
+- `GameManager.getNextWorkerPrice(type)` использует `basePrice` нужного типа; `WorkersScreen` строит UI (имя, нанято, цена, кнопка) из `getAllConfigs()` — при добавлении рабочего редактировать сцену не нужно.
 
 ### resources.json
 
@@ -50,7 +88,7 @@
 - Записи без `id` пропускаются с `cc.warn`.
 - `hasLimit` возвращает `maxAmount !== Infinity`.
 
-## Как добавить новый параметр экономики
+## Как добавить новый параметр в global-config
 
 1. Добавить ключ в `assets/resources/configs/global-config.json`.
 2. Добавить значение в enum `ConfigKey` (`assets/Script/configs/ConfigKeys.ts`) и в `ConfigKeyTypes` (тип: `ConfigType.NUMBER`).
@@ -62,13 +100,13 @@
 ```ts
 export enum ConfigKey {
     PRICE_MULTIPLIER = "defaultPriceMultiplier",
-    MOCK_MINER_PRICE = "mockMinerPrice",
+    MAX_OFFLINE_SECONDS = "maxOfflineSeconds",
     MINE_ENTRY_PRICE = "mineEntryPrice"   // новый
 }
 
 export const ConfigKeyTypes: Record<ConfigKey, ConfigType> = {
     [ConfigKey.PRICE_MULTIPLIER]: ConfigType.NUMBER,
-    [ConfigKey.MOCK_MINER_PRICE]: ConfigType.NUMBER,
+    [ConfigKey.MAX_OFFLINE_SECONDS]: ConfigType.NUMBER,
     [ConfigKey.MINE_ENTRY_PRICE]: ConfigType.NUMBER
 };
 ```
@@ -81,6 +119,15 @@ this.mineEntryPrice = this.getValue<number>(rawData, ConfigKey.MINE_ENTRY_PRICE)
 ```
 
 5. Перезапустить сцену (конфиги кэшируются в `ConfigLoader`, повторной загрузки внутри сессии нет).
+
+## Как добавить нового рабочего (реестр)
+
+1. Добавить запись в `assets/resources/configs/workers.json` (id, goldPerSecond, basePrice, опционально icon/nameKey).
+2. Добавить значение в `MineWorkerTypes` (`assets/Script/model/units/Worker.ts`).
+3. Добавить класс рабочего (примеры: `Miner`, `Dwarf`) — `goldPerSecond`/`defaultPrice` читаются из `WorkerConfigLoader`.
+4. Добавить `case` в `MineWorkerFactory.createByType` / `createByData` (вернуть экземпляр или `null`).
+5. Добавить маппинг `id → MineWorkerTypes` в `WorkersScreen.typeFromConfigId`.
+6. Строка в `WorkersScreen` появится автоматически из реестра (правка сцены не требуется).
 
 ## Как добавить новый ресурс
 
@@ -179,7 +226,7 @@ assets/resources/configs/
 
 ## Ограничения текущей реализации
 
-- `ConfigParser` поддерживает только `NUMBER`; строки и enum-типы вернутся «как есть» с `cc.warn`.
+- `ConfigParser` поддерживает `NUMBER | STRING | BOOLEAN | STRING_ARRAY`; enum-типы, вложенные объекты и ссылки на ресурсы (`ResourceRef`/`SpriteRef`) ещё не поддерживаются.
 - `ConfigLoader` не хранит статистику повторных загрузок: если `loadConfig()` вызвать дважды, он загрузит заново (защита от двойной инициализации есть только в `GameManager`).
 - Ошибка конфига валит запуск (`LoadingScreen` покажет `Failed to load game.`).
 - Для конфиг-драйвена фич (ивенты/диалоги/здания) нужно расширение `ConfigParser` — это первый шаг roadmap.

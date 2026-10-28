@@ -7,12 +7,13 @@
 ### Петля 1: Idle / Clicker / City Builder (основная)
 
 1. **Boot → Loading**: конфиги + `GameManager` + (в debug) консоль.
-2. **TownHall**: игрок видит золото, количество рабочих, доход/сек и кнопку «купить шахтёра».
+2. **TownHall**: игрок видит золото, количество рабочих, доход/сек; покупка рабочих перенесена на сцену Workers.
 3. **Mine**: тап по самородку `gold-nugget` → `+1` золото.
-4. **Buildings / Workers**: сейчас — заглушки; по плану — постройка зданий города и покупка рабочих.
-5. Золото копится автоматически: `goldPerSecond * dt` каждый кадр.
+4. **Workers**: найм рабочих из реестра (`workers.json`) — строка на тип: имя, нанято, цена, кнопка «Hire».
+5. **Buildings**: заглушка; по плану — постройка зданий города.
+6. Золото копится автоматически: `goldPerSecond * dt` каждый кадр.
 
-Итого: **активный клик** (Mine) + **пассивный доход** (рабочие) + **покупка рабочих/зданий** (TownHall/Buildings).
+Итого: **активный клик** (Mine) + **пассивный доход** (рабочие) + **покупка рабочих** (Workers) + **здания** (Buildings, план).
 
 ### Петля 2: Сюжетные ивенты (Match-3 / Blast)
 
@@ -34,10 +35,10 @@
 | Файл | Сцена | Назначение | Статус |
 | --- | --- | --- | --- |
 | `assets/Scene/BootSceene.fire` | Boot | стартовая сцена, `LoadingScreen` | работает |
-| `assets/Scene/TownHall.fire` | TownHall | ратуша: покупка шахтёра, статы, переходы | работает |
+| `assets/Scene/TownHall.fire` | TownHall | ратуша: статы, переходы; покупка рабочих перенесена в Workers | работает |
 | `assets/Scene/Mine.fire` | Mine | шахта: тап по самородку, счётчик золота, переход назад | работает |
 | `assets/Scene/Buildings.fire` | Buildings | заглушка: будущий City Builder | план |
-| `assets/Scene/Workers.fire` | Workers | заглушка: управление рабочими | план |
+| `assets/Scene/Workers.fire` | Workers | найм рабочих: строки из реестра, цена, кнопка Hire, disable | работает |
 | `assets/Scene/legacy/TapClapTest.fire` | legacy | тестовая match-3 сцена (задел ивентов) | ревизия при подключении |
 
 Переходы: `SceneButton` (дропдаун `targetScene`) → `SceneManager.loadScene`. `SceneManager` маппит `SceneName` → строку имени сцены, защищается от повторных переходов.
@@ -46,18 +47,19 @@
 
 ## Экономика
 
-Задаётся `assets/resources/configs/global-config.json`:
+Параметры типов рабочих задаются в `assets/resources/configs/workers.json`, общие — в `assets/resources/configs/global-config.json`:
 
 ```json
 {
   "defaultPriceMultiplier": 1.15,
-  "mockMinerPrice": 10
+  "maxOfflineSeconds": 28800
 }
 ```
 
-- Начальная цена шахтёра: `mockMinerPrice` (10), множитель цены: `priceMultiplier` (1.15).
-- Цена следующего шахтёра: `floor(mockMinerPrice * priceMultiplier^числоМайнеров)` — см. `GameManager.getNextWorkerPrice()`.
-- Доход: каждый `Miner` даёт `0.25` золота/сек (число захардкожено в `Miner.ts`; план — перенос в конфиги).
+- Каждый тип рабочего — запись в `workers.json`: `goldPerSecond`, `basePrice`, опционально `icon`/`nameKey`.
+- Баланс: miner `0.25`/с, базовая цена `10`; dwarf `1`/с, базовая цена `25`.
+- Цена следующего рабочего типа: `floor(basePrice * priceMultiplier^количество_этого_типа)` — см. `GameManager.getNextWorkerPrice(type)`.
+- Доход: сумма `goldPerSecond` всех рабочих (каждый тип читает значение из реестра).
 
 ### Ресурсы
 
@@ -67,10 +69,13 @@
 
 ### Как работает покупка
 
-`GameManager.buyWorker()`:
-1. считает `getNextWorkerPrice()`;
-2. если хватает золота — списывает цену, создаёт `Miner` через `MineWorkerFactory.createByType(MINER)`, добавляет в список;
-3. эмитит `WORKERS_CHANGED` и `INCOME_CHANGED` → UI обновляет цену и доход.
+UI-найм: `WorkersScreen` строит строки из `WorkerConfigLoader.getAllConfigs()`, кнопка вызывает `GameManager.instance.buyWorker(type)` (тип — из `typeFromConfigId`).
+
+`GameManager.buyWorker(type)`:
+1. считает `getNextWorkerPrice(type)` (`basePrice * priceMultiplier^count(type)`);
+2. если хватает золота — создаёт рабочего через `MineWorkerFactory.createByType(type)`; при `null` (неизвестный тип) покупка отменяется без списания;
+3. списывает цену, добавляет в список, сохраняет состав (`SaveManager.saveWorkers`) и эмитит `WORKERS_CHANGED`/`INCOME_CHANGED` → UI обновляет цену, доход и кнопку;
+4. кнопка неактивна (`interactable=false`, opacity 130), когда `gold < price`.
 
 ## Город (City Builder) — план
 
@@ -96,9 +101,7 @@
 ## Пассивный доход и оффлайн-доход
 
 - Онлайн: `GameManager.update(dt)` → `Inventory.add(GOLD, goldPerSecond * dt)`.
-- Оффлайн: при загрузке `processPostLoad()` берёт `last_timestamp` из `SaveManager`, считает `diffSeconds` и добавляет `income * diffSeconds` золота. `last_timestamp` обновляется только в `saveGame()` (`EVENT_HIDE` и `onDestroy`).
-
-⚠️ Ограничения нет: если часы переведены вперёд или сейв от старой сессии, игрок получит весь «накопленный» доход. В `status-and-roadmap.md` это отмечено как задача.
+- Оффлайн: при загрузке `processPostLoad()` берёт `last_timestamp` из `SaveManager`, считает `diffSeconds` и начисляет `income * min(diffSeconds, maxOfflineSeconds)` золота. Лимит `maxOfflineSeconds` (28800 с = 8 ч) задан в `global-config.json`; после начисления `last_timestamp` обновляется.
 
 ## Сохранение
 
@@ -107,10 +110,10 @@
 | Ключ | Содержимое | Кто пишет |
 | --- | --- | --- |
 | `player_inventory` | массив `{typeId, amount}` | `Inventory.save()` при каждом изменении |
-| `mine_workers` | массив `{type: MineWorkerTypes}` | `SaveManager.saveWorkers()` |
+| `mine_workers` | массив `{type, count}` | `SaveManager.saveWorkers()` |
 | `last_timestamp` | число (мс) | `SaveManager.saveLastTimestamp()` |
 
-- Загрузка рабочих идёт через `MineWorkerFactory.createByData`; неизвестные/битые записи отфильтровываются/пропускаются.
+- Загрузка рабочих идёт через `MineWorkerFactory.createByData(type)`; `count` разворачивается в список экземпляров; неизвестные типы (вернул `null`) пропускаются.
 - `SaveManager.clearAll()` — полный сброс (использует dev-команда `reset`).
 - `GameManager` сохраняет при `cc.game.EVENT_HIDE` и в `onDestroy`.
 
@@ -121,6 +124,7 @@
 ## Интерфейс
 
 - `StatLabel` поддерживает `StatType.GOLD` (золото) и `StatType.MINER` (число рабочих).
+- `WorkersScreen` (сцена Workers): строка на тип рабочего — `name`, `Hired: N`, `Next: price`, кнопка `Hire`; данные берутся из `WorkerConfigLoader`, типы настраиваются в `workers.json`.
 - Форматирование больших чисел — `Utils.formatValue` (K/M/B/T/Qa/Qi/Sx, до 3 значащих цифр).
 - Кнопка самородка `GoldNugget` (тап = +1 золото) — компонент прикреплён в сцене **Mine** (проверено запуском). В **TownHall** узел `gold-nugget` используется как **индикатор количества золота** и не является кликабельным — это ожидаемое поведение, а не баг.
 - Проверка условий в UI — только состояние `GameManager.isInitialized` (см. `StatLabel.refreshValue`).

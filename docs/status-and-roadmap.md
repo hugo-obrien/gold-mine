@@ -7,10 +7,11 @@
 ### Что работает
 
 - Запуск: `BootSceene` → конфиги → `GameManager` → `TownHall`.
-- Экономика: покупка шахтёра, пассивный доход (`update`), цена растёт по `priceMultiplier`.
+- Экономика: покупка рабочих по типу, пассивный доход (`update`), цена растёт по `priceMultiplier`.
 - Клик-геймплей: `GoldNugget` (+1 золото) — работает в **Mine**; в **TownHall** самородок — индикатор количества золота (by design, тап не работает).
+- Рабочие: реестр `workers.json` (miner, dwarf), найм на сцене **Workers** (`WorkersScreen`), сохранение состава с `count`.
 - Сохранение: инвентарь, рабочие, метка времени; загрузка с защитой от битых данных.
-- Dev-консоль включает: открытие по `` ` ``, `reset`, `fps`, `scene`, `console` (работает; `addGold`/`setGold` — нет, см. P1).
+- Dev-консоль включает: открытие по `` ` ``, `reset`, `fps`, `scene`, `console`, `addGold`, `setGold` (работают).
 - Сцены-заглушки не ломают переходы.
 
 ### Проверено запуском (27.10.2026)
@@ -18,13 +19,15 @@
 Запуск через превью Cocos Creator (`http://localhost:7456`, редактор 2.4.15):
 
 - Старт: `BootSceene` → конфиги → `GameManager` → `TownHall`; сцена отображается (арт таунхолла, кнопки, золото/Workers/Income, FPS ~60).
-- Покупка: `GameManager.buyWorker()` при 10 золота → 1 рабочий, `goldPerSecond = 0.25`, следующая цена `11`.
-- Доход: за 1 секунду золото выросло ровно на `0.25`.
+- Покупка: `GameManager.buyWorker(type)` — miner `10 → 0.25/с`, следующая цена `11`; dwarf `25 → 1/с`, следующая цена `28`.
+- Доход: за 1 секунду золото выросло ровно на `0.25` (с 1 шахтёром); с dwarf — на `1.0`.
 - Тап (Mine): 7 тапов по самородку → `+7` золота, лейбл `gold-score-label` обновился.
-- Переходы: `SceneButton` (Mine → TownHall) и `scene Mine` из консоли работают.
+- Переходы: `SceneButton` (Mine → TownHall) и `scene Mine` (консоль) работают; `scene Workers` работает.
+- **Workers**: компонент `WorkersScreen` на Canvas сцены Workers; строки `row_miner`/`row_dwarf`, `Hired: N`, `Next: price`, кнопка `Hire`; при золоте 5 кнопки `interactable=false` (opacity 130), при достаточном золоте — активны.
+- **Найм dwarf**: `buyWorker(DWARF)` списал 25, `workers = [Miner, Dwarf]`, сохранение `[{"type":0,"count":1},{"type":1,"count":1}]`; переходы Workers → TownHall → Workers сохраняют состав.
 - Сохранение: после 3 тапов `localStorage['player_inventory'] = [{"typeId":"gold","amount":13}]`; после перехода сцены золото осталось `13`.
-- Dev-консоль: `setGold`/`addGold` падают (см. P1); `reset`/`fps`/`scene` работают.
-- Выявлено рантайм: `GoldNugget` нет в TownHall — **by design** (индикатор); `Income` показывает 0 при доходе 0.25/с (P1c).
+- Dev-консоль: `setGold`/`addGold` работают (OK); `reset`/`fps`/`scene` работают.
+- Выявлено рантайм: `GoldNugget` нет в TownHall — **by design** (индикатор); `Income` показывает 0.25 при доходе 0.25/с (P1c).
 
 ## Известные проблемы
 
@@ -33,31 +36,25 @@
 - `addGold` → `GameManager.instance.addGold(amount)` — метода нет.
 - `setGold` → `(GameManager.instance as any)._gold`, `.notifyScoreChanged()` — полей/метода нет (это старый API).
 
-**Подтверждено запуском (27.10.2026):** в консоли `addGold 100` → `Failed: ...addGold is not a function`; `setGold 100` → `Failed: ...notifyScoreChanged is not a function`. Золото не меняется.
-
-Следствие: команды падают (лог `Failed: …`), в UI золото не обновится.
-**Рекомендация:** добавить в `GameManager` публичные `addGold(amount)` / `setGold(amount)` с использованием `Inventory.instance.add/set` и эмитом `RESOURCE_CHANGED`; убрать `as any`.
+**Исправлено (27.10.2026):** в `GameManager` добавлены `addGold()`/`setGold()` (через `Inventory`), `as any` убран; проверено в превью — команды возвращают `OK` и меняют золото.
 
 ### P1c — доход 0.25/с отображается как «0»
-`Utils.formatValue` при значениях < 1000 возвращает `Math.round(num)` → для `0.25` даёт `0`. Проверено запуском: `goldPerSecond = 0.25`, в UI `Income 0` (а `Workers 1`). Из-за этого доход до 1/с выглядит нулевым.
+`Utils.formatValue` при значениях < 1000 возвращает `Math.round(num)` → для `0.25` даёт `0`.
 
-**Рекомендация:** для `0 < num < 1` показывать знаки после запятой (или форматировать по отдельному правилу).
+**Исправлено (27.10.2026):** для `0 < num < 1` значение выводится как есть с округлением до 2 знаков; в UI `Income` показывает `0.25`.
 
 ### P2 — экономика шахтёра захардкожена
-`assets/Script/model/units/Miner.ts:7-8`:
-```ts
-private _baseGoldPerSecond = 0.25;
-private _defaultPrice = 10;
-```
-TODO-комментарии в `Miner.ts` и `Worker.ts` говорят о переносе в конфиги. Сейчас изменение баланса в `global-config.json` не влияет на доход (только на цену), `defaultPrice` вообще не используется логикой.
+`assets/Script/model/units/Miner.ts`:
+- `goldPerSecond` читается из `WorkerConfigLoader.instance.getConfig('miner').goldPerSecond` (реестр `workers.json`).
+- `defaultPrice` читается из `WorkerConfigLoader...getConfig('miner').basePrice` (не используется в логике, оставлен интерфейсом).
+- `GameManager.getNextWorkerPrice()` использует `basePrice` из реестра.
 
-**Рекомендация:** добавить в конфиги `minerGoldPerSecond` / `minerBasePrice`, читать через `ConfigLoader` в `Miner` (или передавать из `GameManager`).
+**Исправлено (27.10.2026):** экономика шахтёра полностью вынесена в `workers.json`; в `global-config.json` остались `defaultPriceMultiplier` и `maxOfflineSeconds`.
 
 ### P3 — оффлайн-доход без ограничений
-`GameManager.processPostLoad()` (`GameManager.ts:136-143`) начисляет всё время `Date.now() - lastTimestamp`, без верхней границы.
+`GameManager.processPostLoad()` начислял всё время `Date.now() - lastTimestamp`, без верхней границы.
 
-**Риски:** подкрутка часов, «спящий» сейв со старым таймстампом → огромное количество золота.
-**Рекомендация:** ограничить оффлайн-доход (например, `Math.min(diffSeconds, MAX_OFFLINE_SECONDS)`) или показывать игроку начисление.
+**Исправлено (27.10.2026):** добавлен `maxOfflineSeconds` в `global-config.json` (28800 с = 8 ч); начисления ограничены, после начисления `last_timestamp` обновляется. Проверено в превью: `diff 100000 c → начислено 7200` (лимит), `diff 3000 c → 750` (без лимита).
 
 ### P4 — legacy / ивент-задел не подключён
 `assets/Script/legacy/` — match-3 (Grid, Tile, BoardView, BlastGameManager, поведения, UIManager). **Осознанно сохранён** как основа для сюжетных ивентов. К игре не подключён. `assets/Scene/legacy/TapClapTest.fire` ссылается на скрипт с uuid `89e3cyvC9dGUrfoKqkdusTh`, которого нет среди текущих `.meta` (актуальный uuid `BlastGameManager` — `562d5478-…`).
@@ -66,10 +63,11 @@ TODO-комментарии в `Miner.ts` и `Worker.ts` говорят о пе�
 
 ### P5 — прочее
 - `Townhall.onDestroy` отписывает слушатель кнопки новым замыканием — реальная отписка не выполняется (не критично, т.к. сцена выгружается целиком, но паттерн неправильный).
-- `GameManager.getNextWorkerPrice()` считает майнеров через `instanceof Miner` — при добавлении новых типов рабочих цену придётся дорабатывать.
-- `ConfigParser` поддерживает только `NUMBER`; другие типы не парсятся — блокирует конфиг-драйвен фич.
+- `GameManager.getNextWorkerPrice(type)` считает рабочих по типу через `getWorkerCount(type)` — при добавлении новых типов обновляется только `typeFromConfigId`/реестр; `GameManager.getWorkerConfigId` требует `case` для нового `MineWorkerTypes`.
+- `ConfigParser` поддерживает `NUMBER | STRING | BOOLEAN | STRING_ARRAY`; enum/вложенные объекты/ресурсы не парсятся — блокирует конфиг-драйвен фич (диалоги, ивенты, здания).
 - `Inventory.has()` и `updateGold` залогированы очень щедро (`cc.log` на каждый вызов) — в релизе замусорит консоль.
 - Название в `project.json` — «HelloWorld»; `BootSceene` — опечатка (см. `docs/development.md`).
+- Превью-артефакт: при полном reload браузера старая сессия превью может перезаписать `mine_workers` своим `_workers` (гонка `onDestroy → saveGame`); при чистом `tryLoadGame()` из пустого сохранения состав корректно `[]`. При сборке в браузере/нативный риск исчезает, но стоит перезапускать превью редактора после изменения сцен.
 
 ## Roadmap реализации фич
 
@@ -80,24 +78,31 @@ TODO-комментарии в `Miner.ts` и `Worker.ts` говорят о пе�
 **Цель:** игра стабильно работает, тесты баланса удобны.
 
 - [x] Документация: README + docs/*
-- [ ] P1: починить `addGold`/`setGold` + убрать `as any`
-- [ ] P1c: форматирование дробного дохода (`Utils.formatValue`)
-- [ ] P2: вынести экономику шахтёра в конфиги (`minerGoldPerSecond`, цена)
-- [ ] P3: ограничить оффлайн-доход (максимум `MAX_OFFLINE_SECONDS` или UI-подтверждение)
+- [x] P1: починить `addGold`/`setGold` + убрать `as any`
+- [x] P1c: форматирование дробного дохода (`Utils.formatValue`)
+- [x] P2: вынести экономику шахтёра в конфиги (`workerGoldPerSecond` в реестре)
+- [x] P3: ограничить оффлайн-доход (`maxOfflineSeconds` в конфиге)
+- [x] Найм рабочих на сцене Workers (реестр `workers.json`, `WorkersScreen`, dwarf; TownHall — без кнопки покупки)
+- [x] Защита `MineWorkerFactory`/`GameManager` от неизвестного типа (`null` вместо `undefined`)
 
-**Критерии приёмки:** dev-команды работают, доход отображается корректно, баланс редактируется в JSON, оффлайн-доход ограничен.
+**Критерии приёмки:** dev-команды работают, доход отображается корректно, баланс редактируется в JSON, оффлайн-доход ограничен, найм на сцене Workers работает и сохраняет состав.
+
+*Проверено в превью (27.10.2026): `addGold`/`setGold` работают (OK), `Income` показывает 0.25, покупка даёт 0.25/с, оффлайн-лимит: 100000 c → 7200 (лимит 28800 c); Workers — найм miner/dwarf, disable-кнопка, сохранение состава.*
 
 ### Этап 1. Конфиг-платформа
 
 **Цель:** заменить жесткую `ConfigData`/`ConfigParser` на универсальный, типизированный слой конфигов; ввести реестры.
 
-- [ ] Расширить `ConfigParser`: `number | string | boolean | enum | string[] | вложенные конфиги`
+- [x] Расширить `ConfigParser`: `NUMBER | STRING | BOOLEAN | STRING_ARRAY`
 - [ ] Универсальный `ConfigLoader` по типам (`BaseConfigLoader<T>`, `getAll`, `getById`)
 - [ ] Проверка конфигов на этапе загрузки (имя файла + поле в ошибке)
-- [ ] Реестры: `workers.json` (параметры рабочих), `buildings.json` (здания)
+- [x] Реестр `workers.json` (параметры рабочих: `goldPerSecond`, `basePrice`; miner + dwarf)
+- [ ] Реестр `buildings.json` (здания)
 - [ ] Легковесная валидация «лишнего поля» (опция) и fallback-значения
 
 **Критерии приёмки:** новый тип конфига добавляется без правки `ConfigParser`-магистрали (только описание типа), ошибки понятны, конфиги подхватываются `ConfigLoader`.
+
+*Текущее: `ConfigParser` расширен, `WorkerConfigLoader` загружает `workers.json` и используется `Miner`/`Dwarf`/`GameManager`/`WorkersScreen`; глобальная экономика шахтёра перенесена в реестр (в `global-config` остались только множитель цены и лимит оффлайна).*
 
 ### Этап 2. Сохранение и прогресс
 

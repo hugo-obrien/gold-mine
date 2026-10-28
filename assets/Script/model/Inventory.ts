@@ -87,6 +87,17 @@ export class Inventory {
         return false;
     }
 
+    public set(typeId: string, amount: number): void {
+        if (amount < 0) {
+            throw new Error(`Inventory.set(${typeId}): amount cannot be negative`);
+        }
+
+        const resource = this.get(typeId);
+        resource.setAmount(amount);
+        this.save();
+        GlobalEvent.emit(GameEvent.RESOURCE_CHANGED, typeId, resource.amount);
+    }
+
     public hasAll(costs: Array<{typeId: string, amount: number}>): boolean {
         for (const c of costs) {
             if (!this.has(c.typeId, c.amount)) return false;

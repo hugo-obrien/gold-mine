@@ -1,35 +1,37 @@
 import {MineWorker, MineWorkerSaveData, MineWorkerTypes} from "./Worker";
 import {Utils} from "../../utils/Utils";
+import {WorkerConfigLoader} from "../../configs/WorkerConfigLoader";
 
 export class Miner implements MineWorker {
     private _key: string;
 
-    // todo move to configs
-    private _baseGoldPerSecond = 0.25;
-    private _defaultPrice = 10;
-
     constructor() {
-        this._key = Utils.buildName('MineWorker', 'Worker');
+        this._key = Utils.buildName('MineWorker', 'Miner');
     }
 
     serialize(): MineWorkerSaveData {
         return {
-            type: MineWorkerTypes.MINER,
-            //goldPerSecond: this.goldPerSecond
+            type: MineWorkerTypes.MINER
         }
+    }
+
+    public get configId(): string {
+        return 'miner';
     }
 
     public get key() {
         return this._key;
     }
 
+    public get type() {
+        return MineWorkerTypes.MINER;
+    }
+
     public get goldPerSecond() {
-        // todo calculate by configs
-        return this._baseGoldPerSecond;
+        return WorkerConfigLoader.instance.getConfig('miner').goldPerSecond;
     }
 
     public get defaultPrice() {
-        // todo calculate by configs
-        return this._defaultPrice;
+        return WorkerConfigLoader.instance.getConfig('miner').basePrice;
     }
 }

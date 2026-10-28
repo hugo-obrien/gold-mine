@@ -1,5 +1,7 @@
 import {ConfigData} from "./ConfigData";
 import {ResourceConfigLoader} from "./ResourceConfigLoader";
+import {WorkerConfigLoader} from "./WorkerConfigLoader";
+import {SpriteFrameProvider} from "../services/SpriteFrameProvider";
 
 export class ConfigLoader {
     private static _instance: ConfigLoader;
@@ -21,7 +23,9 @@ export class ConfigLoader {
 
     public get isLoaded(): boolean {
         return this._configData !== null
-            && ResourceConfigLoader.instance.isLoaded;
+            && ResourceConfigLoader.instance.isLoaded
+            && WorkerConfigLoader.instance.isLoaded
+            && SpriteFrameProvider.instance.isLoaded;
     }
 
     public async loadConfig(): Promise<void> {
@@ -29,7 +33,9 @@ export class ConfigLoader {
         try {
             await Promise.all([
                 this.loadGlobalConfig(),
-                ResourceConfigLoader.instance.load()
+                ResourceConfigLoader.instance.load(),
+                WorkerConfigLoader.instance.load(),
+                SpriteFrameProvider.instance.load()
             ])
             cc.log('ConfigLoader: Successfully loaded');
         } catch (error) {

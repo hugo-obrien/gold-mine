@@ -20,13 +20,12 @@ export class BuiltinCommands {
             description: 'Set gold to exact value. Usage: setGold <amount>',
             execute: (args) => {
                 const amount = Number(args[0]);
-                if (isNaN(amount)) {
-                    DebugConsole.instance?.appendLog(`Invalid amount`);
+                if (isNaN(amount) || amount < 0) {
+                    DebugConsole.instance?.appendLog(`Invalid amount: ${args[0]}`);
                     return;
                 }
 
-                (GameManager.instance as any)._gold = amount;
-                (GameManager.instance as any).notifyScoreChanged();
+                GameManager.instance.setGold(amount);
                 DebugConsole.instance?.appendLog(`Gold set to ${amount}`);
             }
         });

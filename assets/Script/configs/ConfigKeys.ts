@@ -1,13 +1,16 @@
 export enum ConfigKey {
     PRICE_MULTIPLIER = "defaultPriceMultiplier",
-    MOCK_MINER_PRICE = "mockMinerPrice"
+    MAX_OFFLINE_SECONDS = "maxOfflineSeconds"
 }
 
 export enum ConfigType {
-    NUMBER
+    NUMBER,
+    STRING,
+    BOOLEAN,
+    STRING_ARRAY
 }
 
 export const ConfigKeyTypes: Record<ConfigKey, ConfigType> = {
     [ConfigKey.PRICE_MULTIPLIER]: ConfigType.NUMBER,
-    [ConfigKey.MOCK_MINER_PRICE]: ConfigType.NUMBER
+    [ConfigKey.MAX_OFFLINE_SECONDS]: ConfigType.NUMBER
 };

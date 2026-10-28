@@ -1,9 +1,14 @@
 import {MineWorkerFactory} from "../services/MineWorkerFactory";
-import {MineWorker, MineWorkerSaveData} from "../model/units/Worker";
+import {MineWorker, MineWorkerSaveData, MineWorkerTypes} from "../model/units/Worker";
 
 export interface ResourceSaveEntry {
     typeId: string;
     amount: number;
+}
+
+export interface WorkerSaveEntry {
+    type: MineWorkerTypes;
+    count: number;
 }
 
 export class SaveManager {
@@ -29,7 +34,17 @@ export class SaveManager {
     }
 
     public saveWorkers(workers: MineWorker[]) {
-        const saveData = workers.map(worker => worker.serialize());
+        const counts = new Map<MineWorkerTypes, number>();
+        for (const worker of workers) {
+            if (!worker) {
+                continue;
+            }
+
+            counts.set(worker.type, (counts.get(worker.type) || 0) + 1);
+        }
+
+        const saveData: WorkerSaveEntry[] = [];
+        counts.forEach((count, type) => saveData.push({type, count}));
         cc.sys.localStorage.setItem(this.KEY_WORKERS, JSON.stringify(saveData));
     }
 
@@ -41,10 +56,21 @@ export class SaveManager {
         }
 
         try {
-            const dataArray: MineWorkerSaveData[] = JSON.parse(json);
-            return dataArray
-                .map(data => MineWorkerFactory.createByData(data))
-                .filter(worker => worker != null);
+            const rawArray: any[] = JSON.parse(json);
+            const result: MineWorker[] = [];
+            for (const raw of rawArray) {
+                const type = raw.type;
+                const worker = MineWorkerFactory.createByData({type} as MineWorkerSaveData);
+                if (!worker) {
+                    continue;
+                }
+
+                const count = typeof raw.count === 'number' ? raw.count : 1;
+                for (let i = 0; i < count; i++) {
+                    result.push(MineWorkerFactory.createByData({type} as MineWorkerSaveData));
+                }
+            }
+            return result;
         } catch (ex) {
             cc.error('Failed to parse mine workers data:', ex);
             return [];

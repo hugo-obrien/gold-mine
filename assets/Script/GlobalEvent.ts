@@ -7,5 +7,6 @@ export enum GameEvent {
     SCORE_CHANGED = 'GameEvent:ScoreChanged',
     WORKERS_CHANGED = 'GameEvent:WorkersChanged',
     INCOME_CHANGED = 'GameEvent:IncomeChanged',
-    RESOURCE_CHANGED = 'GameEvent:ResourceChanged'
+    RESOURCE_CHANGED = 'GameEvent:ResourceChanged',
+    GAME_INITIALIZED = 'GameEvent:GameInitialized'
 }

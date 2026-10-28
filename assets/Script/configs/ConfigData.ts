@@ -3,11 +3,11 @@ import {ConfigParser} from "./ConfigParser";
 
 export class ConfigData {
     public readonly priceMultiplier: number;
-    public readonly mockMinerPrice: number;
+    public readonly maxOfflineSeconds: number;
 
     constructor(rawData: any) {
         this.priceMultiplier = this.getValue<number>(rawData, ConfigKey.PRICE_MULTIPLIER);
-        this.mockMinerPrice = this.getValue<number>(rawData, ConfigKey.MOCK_MINER_PRICE);
+        this.maxOfflineSeconds = this.getValue<number>(rawData, ConfigKey.MAX_OFFLINE_SECONDS);
     }
 
     private getValue<T>(rawData: any, key: ConfigKey): T {

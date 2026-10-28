@@ -4,6 +4,17 @@ export class Utils {
     }
 
     public static formatValue(num: number): string {
+        if (num < 0) {
+            return '-' + this.formatValue(-num);
+        }
+
+        if (num < 1) {
+            if (num === 0) {
+                return '0';
+            }
+            return (Math.round(num * 100) / 100).toString();
+        }
+
         if (num < 1000) {
             return Math.round(num).toString();
         }
@@ -18,18 +29,28 @@ export class Utils {
             {threshold: 1e21, suffix: 'Sx'}
         ]
 
-        let selectedSuffix = suffixes[suffixes.length - 1];
-        for (let i = suffixes.length -1; i >= 0; i--) {
+        let selectedIndex = suffixes.length - 1;
+        for (let i = suffixes.length - 1; i >= 0; i--) {
             if (num >= suffixes[i].threshold) {
-                selectedSuffix = suffixes[i]
+                selectedIndex = i;
                 break;
             }
         }
 
-        const scaledValue = num / selectedSuffix.threshold;
-        let formatted = scaledValue.toPrecision(3);
-        formatted = formatted.replace(/\.?0+$/, "");
+        // Round to 3 significant figures. If the rounded value overflows into the
+        // next unit (e.g. 999.999K -> 1M), promote the suffix instead of emitting
+        // scientific notation or an intermediate value.
+        while (selectedIndex < suffixes.length - 1) {
+            const candidate = suffixes[selectedIndex];
+            const rounded = parseFloat((num / candidate.threshold).toPrecision(3));
+            if (rounded < 1000) {
+                break;
+            }
+            selectedIndex++;
+        }
 
-        return formatted + selectedSuffix.suffix;
+        const selected = suffixes[selectedIndex];
+        const rounded = parseFloat((num / selected.threshold).toPrecision(3));
+        return rounded.toString() + selected.suffix;
     }
 }

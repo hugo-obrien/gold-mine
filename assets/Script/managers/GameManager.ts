@@ -2,6 +2,7 @@ import {SaveManager} from "./SaveManager";
 import {GameEvent, GlobalEvent} from "../GlobalEvent";
 import {MineWorkerFactory} from "../services/MineWorkerFactory";
 import {ConfigLoader} from "../configs/ConfigLoader";
+import {WorkerConfigLoader} from "../configs/WorkerConfigLoader";
 import {Inventory} from "../model/Inventory";
 import {ResourceType} from "../model/resources/Resource";
 import {MineWorker, MineWorkerTypes} from "../model/units/Worker";
@@ -36,6 +37,10 @@ export class GameManager extends cc.Component {
     public get goldPerSecond(): number {
         let gps = 0;
         for (const worker of this._workers) {
+            if (!worker) {
+                continue;
+            }
+
             gps += worker.goldPerSecond;
         }
 
@@ -62,6 +67,7 @@ export class GameManager extends cc.Component {
         cc.game.on(cc.game.EVENT_HIDE, this.saveGame, this);
 
         this.tryLoadGame();
+        GlobalEvent.emit(GameEvent.GAME_INITIALIZED);
     }
 
     protected onDestroy() {
@@ -85,31 +91,47 @@ export class GameManager extends cc.Component {
         }
     }
 
-    public buyWorker() {
-        cc.log('Buy worker pressed');
-        const finalPrice = this.getNextWorkerPrice();
-        cc.log(`Final price ${finalPrice}`);
+    public buyWorker(type: MineWorkerTypes = MineWorkerTypes.MINER) {
+        const worker = MineWorkerFactory.createByType(type);
+        if (!worker) {
+            cc.warn(`GameManager.buyWorker(): cannot create worker of type ${type}`);
+            return;
+        }
+
+        const finalPrice = this.getNextWorkerPrice(worker.configId);
         if (Inventory.instance.has(ResourceType.GOLD, finalPrice)) {
             Inventory.instance.spend(ResourceType.GOLD, finalPrice);
-            const worker = MineWorkerFactory.createByType(MineWorkerTypes.MINER);
             this.addWorker(worker);
         } else {
             cc.log('Not enough gold');
         }
     }
 
-    public getNextWorkerPrice(): number {
-        let config = ConfigLoader.instance.globalConfig;
+    public addGold(amount: number) {
+        Inventory.instance.add(ResourceType.GOLD, amount);
+    }
 
-        const minersCount = this._workers.filter(worker => worker instanceof Miner).length;
+    public setGold(amount: number) {
+        Inventory.instance.set(ResourceType.GOLD, amount);
+    }
+
+    public getWorkerCount(configId: string): number {
+        return this._workers.filter(worker => !!worker && worker.configId === configId).length;
+    }
+
+    public getNextWorkerPrice(configId: string): number {
+        const config = ConfigLoader.instance.globalConfig;
+        const workerConfig = WorkerConfigLoader.instance.getConfig(configId);
+        const count = this.getWorkerCount(configId);
         const priceMultiplier = config.priceMultiplier;
-        const mockPrice = config.mockMinerPrice;
+        const mockPrice = workerConfig.basePrice;
 
-        return Math.floor(mockPrice * Math.pow(priceMultiplier, minersCount));
+        return Math.floor(mockPrice * Math.pow(priceMultiplier, count));
     }
 
     public addWorker(worker: MineWorker) {
         this._workers.push(worker);
+        SaveManager.instance.saveWorkers(this._workers);
         this.notifyWorkersChanged();
     }
 
@@ -136,9 +158,12 @@ export class GameManager extends cc.Component {
     private processPostLoad(diffSeconds: number) {
         const income = this.goldPerSecond;
         if (income > 0 && diffSeconds > 0) {
-            const offlineMined = income * diffSeconds;
+            const maxOfflineSeconds = ConfigLoader.instance.globalConfig.maxOfflineSeconds;
+            const cappedSeconds = Math.min(diffSeconds, maxOfflineSeconds);
+            const offlineMined = income * cappedSeconds;
             Inventory.instance.add(ResourceType.GOLD, offlineMined);
-            cc.log(`Offline mined: ${offlineMined}`);
+            SaveManager.instance.saveLastTimestamp();
+            cc.log(`Offline mined: ${offlineMined} (${cappedSeconds}s of ${diffSeconds}s)`);
         }
     }
 

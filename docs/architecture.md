@@ -122,7 +122,7 @@ BootSceene.fire
 
 ### managers
 
-- `GameManager`: `gold`, `workers`, `goldPerSecond` (сумма по рабочим), `buyWorker()` (списание + создание `Miner` через фабрику), `getNextWorkerPrice()` (цена = `mockMinerPrice * priceMultiplier^кол-во`), `update(dt)` — пассивный доход, `saveGame()` на `EVENT_HIDE` и `onDestroy`.
+- `GameManager`: `gold`, `workers`, `goldPerSecond` (сумма по рабочим), `buyWorker(type)` (списание + создание рабочего через фабрику по типу; при `null` — отмена), `getNextWorkerPrice(type)` (цена = `basePrice * priceMultiplier^кол-во типа`), `update(dt)` — пассивный доход, `saveGame()` на `EVENT_HIDE` и `onDestroy`.
 - `SaveManager`: ключи `player_inventory`, `mine_workers`, `last_timestamp`; загрузка с `try/catch`, при ошибке — пустой массив.
 - `SceneManager`: enum `SceneName` (TOWN_HALL=0, MINE=1, BUILDINGS=2, WORKERS=3) → имя файла сцены; защита от повторного перехода (`_isLoading`).
 
