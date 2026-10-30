@@ -12,7 +12,7 @@ export class ResourceConfig {
     constructor(data: ResourceConfigData) {
         this.id = data.id;
         this.icon = data.icon;
-        this.maxAmount = data.maxAmount;
+        this.maxAmount = data.maxAmount === undefined ? Infinity : data.maxAmount;
     }
 
     public get hasLimit() {

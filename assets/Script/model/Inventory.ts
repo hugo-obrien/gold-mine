@@ -98,9 +98,11 @@ export class Inventory {
         GlobalEvent.emit(GameEvent.RESOURCE_CHANGED, typeId, resource.amount);
     }
 
-    public hasAll(costs: Array<{typeId: string, amount: number}>): boolean {
-        for (const c of costs) {
-            if (!this.has(c.typeId, c.amount)) return false;
+    public hasAll(costs: Map<string, number>): boolean {
+        for (const [typeId, amount] of costs) {
+            if (!this.has(typeId, amount)) {
+                return false;
+            }
         }
         return true;
     }
